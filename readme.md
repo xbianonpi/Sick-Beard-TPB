@@ -1,5 +1,8 @@
 Sick Beard
 =====
+Pirate Bay edition patched for xbian
+Original at: https://github.com/mr-orange/Sick-Beard
+
 
 *Sick Beard is currently an alpha release. There may be severe bugs in it and at any given time it may not work at all.*
 

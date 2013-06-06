@@ -35,13 +35,13 @@ def sendNZB(nzb):
 
     addToTop = False
     nzbgetprio = 0
-    nzbgetXMLrpc = "http://nzbget:%(password)s@%(host)s/xmlrpc"
+    nzbgetXMLrpc = "http://%(username)s:%(password)s@%(host)s/xmlrpc"
 
     if sickbeard.NZBGET_HOST == None:
         logger.log(u"No NZBget host found in configuration. Please configure it.", logger.ERROR)
         return False
 
-    url = nzbgetXMLrpc % {"host": sickbeard.NZBGET_HOST, "password": sickbeard.NZBGET_PASSWORD}
+    url = nzbgetXMLrpc % {"host": sickbeard.NZBGET_HOST, "username": sickbeard.NZBGET_USERNAME, "password": sickbeard.NZBGET_PASSWORD}
 
     nzbGetRPC = xmlrpclib.ServerProxy(url)
     try:
@@ -99,3 +99,4 @@ def sendNZB(nzb):
     except:
         logger.log(u"Connect Error to NZBget: could not add %s to the queue" % (nzb.name + ".nzb"), logger.ERROR)
         return False
+

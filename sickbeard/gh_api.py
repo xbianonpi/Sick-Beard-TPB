@@ -33,7 +33,7 @@ class GitHub(object):
         """
         Access the API at the path given and with the optional params given.
         
-        path: A list of the path elements to use (eg. ['repos', 'midgetspy', 'Sick-Beard', 'commits'])
+        path: A list of the path elements to use (eg. ['repos', 'xbianonpi', 'Sick-Beard-TPB', 'commits'])
         params: Optional dict of name/value pairs for extra params to send. (eg. {'per_page': 10})
         
         Returns a deserialized json object of the result. Doesn't do any error checking (hope it works).

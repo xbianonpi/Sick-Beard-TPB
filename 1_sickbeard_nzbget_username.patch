@@ -1,0 +1,124 @@
+diff '--exclude=.git' -urb old/gui/slick/interfaces/default/config_search.tmpl new/gui/slick/interfaces/default/config_search.tmpl
+--- old/gui/slick/interfaces/default/config_search.tmpl	2013-06-06 09:54:41.674627351 +0200
++++ new/gui/slick/interfaces/default/config_search.tmpl	2013-06-06 12:20:27.985569112 +0200
+@@ -219,7 +219,18 @@
+                                 </label>
+                                 <label class="nocheck clearfix">
+                                     <span class="component-title">&nbsp;</span>
+-                                    <span class="component-desc">(eg. localhost:6789)</span>
++                                    <span class="component-desc">(eg. localhost:9092)</span>
++                                </label>
++                            </div>
++							
++                            <div class="field-pair">
++                                <label class="nocheck clearfix">
++                                    <span class="component-title">NZBget Username</span>
++                                    <input type="text" name="nzbget_username" value="$sickbeard.NZBGET_USERNAME" size="20" />
++                                </label>
++                                <label class="nocheck clearfix">
++                                    <span class="component-title">&nbsp;</span>
++                                    <span class="component-desc">Username found in nzbget.conf (by default xbian)</span>
+                                 </label>
+                             </div>
+                             
+@@ -230,7 +241,7 @@
+                                 </label>
+                                 <label class="nocheck clearfix">
+                                     <span class="component-title">&nbsp;</span>
+-                                    <span class="component-desc">Password found in nzbget.conf (by default tegbzn6789)</span>
++                                    <span class="component-desc">Password found in nzbget.conf (by default raspberry)</span>
+                                 </label>
+                             </div>
+ 
+@@ -442,3 +453,4 @@
+ </script>
+ 
+ #include $os.path.join($sickbeard.PROG_DIR,"gui/slick/interfaces/default/inc_bottom.tmpl")
++
+diff '--exclude=.git' -urb old/sickbeard/__init__.py new/sickbeard/__init__.py
+--- old/sickbeard/__init__.py	2013-06-06 09:54:42.794594814 +0200
++++ new/sickbeard/__init__.py	2013-06-06 13:16:17.000000000 +0200
+@@ -244,6 +244,7 @@
+ SAB_CATEGORY = None
+ SAB_HOST = ''
+ 
++NZBGET_USERNAME = None
+ NZBGET_PASSWORD = None
+ NZBGET_CATEGORY = None
+ NZBGET_HOST = None
+@@ -421,7 +422,7 @@
+         global LOG_DIR, WEB_PORT, WEB_LOG, WEB_ROOT, WEB_USERNAME, WEB_PASSWORD, WEB_HOST, WEB_IPV6, USE_API, API_KEY, ENABLE_HTTPS, HTTPS_CERT, HTTPS_KEY, \
+                 USE_NZBS, USE_TORRENTS, NZB_METHOD, NZB_DIR, DOWNLOAD_PROPERS, ALLOW_HIGH_PRIORITY, TORRENT_METHOD, \
+                 SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_HOST, \
+-                NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_HOST, currentSearchScheduler, backlogSearchScheduler, \
++                NZBGET_USERNAME, NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_HOST, currentSearchScheduler, backlogSearchScheduler, \
+                 TORRENT_USERNAME, TORRENT_PASSWORD, TORRENT_HOST, TORRENT_PATH, TORRENT_RATIO, TORRENT_PAUSED, TORRENT_HIGH_BANDWIDTH, TORRENT_LABEL, \
+                 USE_XBMC, XBMC_NOTIFY_ONSNATCH, XBMC_NOTIFY_ONDOWNLOAD, XBMC_NOTIFY_ONSUBTITLEDOWNLOAD, XBMC_UPDATE_FULL, XBMC_UPDATE_ONLYFIRST, \
+                 XBMC_UPDATE_LIBRARY, XBMC_HOST, XBMC_USERNAME, XBMC_PASSWORD, \
+@@ -658,7 +659,8 @@
+         SAB_CATEGORY = check_setting_str(CFG, 'SABnzbd', 'sab_category', 'tv')
+         SAB_HOST = check_setting_str(CFG, 'SABnzbd', 'sab_host', '')
+ 
+-        NZBGET_PASSWORD = check_setting_str(CFG, 'NZBget', 'nzbget_password', 'tegbzn6789')
++        NZBGET_USERNAME = check_setting_str(CFG, 'NZBget', 'nzbget_username', 'xbian')
++        NZBGET_PASSWORD = check_setting_str(CFG, 'NZBget', 'nzbget_password', 'raspberry')
+         NZBGET_CATEGORY = check_setting_str(CFG, 'NZBget', 'nzbget_category', 'tv')
+         NZBGET_HOST = check_setting_str(CFG, 'NZBget', 'nzbget_host', '')
+ 
+@@ -1337,6 +1339,7 @@
+     new_config['SABnzbd']['sab_host'] = SAB_HOST
+ 
+     new_config['NZBget'] = {}
++    new_config['NZBget']['nzbget_username'] = NZBGET_USERNAME
+     new_config['NZBget']['nzbget_password'] = NZBGET_PASSWORD
+     new_config['NZBget']['nzbget_category'] = NZBGET_CATEGORY
+     new_config['NZBget']['nzbget_host'] = NZBGET_HOST
+@@ -1560,3 +1563,4 @@
+         epList.append(curEpObj)
+ 
+     return epList
++
+diff '--exclude=.git' -urb old/sickbeard/nzbget.py new/sickbeard/nzbget.py
+--- old/sickbeard/nzbget.py	2013-06-06 09:54:42.954590167 +0200
++++ new/sickbeard/nzbget.py	2013-06-06 12:36:46.396865212 +0200
+@@ -35,13 +35,13 @@
+ 
+     addToTop = False
+     nzbgetprio = 0
+-    nzbgetXMLrpc = "http://nzbget:%(password)s@%(host)s/xmlrpc"
++    nzbgetXMLrpc = "http://%(username)s:%(password)s@%(host)s/xmlrpc"
+ 
+     if sickbeard.NZBGET_HOST == None:
+         logger.log(u"No NZBget host found in configuration. Please configure it.", logger.ERROR)
+         return False
+ 
+-    url = nzbgetXMLrpc % {"host": sickbeard.NZBGET_HOST, "password": sickbeard.NZBGET_PASSWORD}
++    url = nzbgetXMLrpc % {"host": sickbeard.NZBGET_HOST, "username": sickbeard.NZBGET_USERNAME, "password": sickbeard.NZBGET_PASSWORD}
+ 
+     nzbGetRPC = xmlrpclib.ServerProxy(url)
+     try:
+@@ -99,3 +99,4 @@
+     except:
+         logger.log(u"Connect Error to NZBget: could not add %s to the queue" % (nzb.name + ".nzb"), logger.ERROR)
+         return False
++
+diff '--exclude=.git' -urb old/sickbeard/webserve.py new/sickbeard/webserve.py
+--- old/sickbeard/webserve.py	2013-06-06 09:54:43.024588132 +0200
++++ new/sickbeard/webserve.py	2013-06-06 13:19:48.000000000 +0200
+@@ -951,7 +951,7 @@
+ 
+     @cherrypy.expose
+     def saveSearch(self, use_nzbs=None, use_torrents=None, nzb_dir=None, sab_username=None, sab_password=None,
+-                       sab_apikey=None, sab_category=None, sab_host=None, nzbget_password=None, nzbget_category=None, nzbget_host=None,
++                       sab_apikey=None, sab_category=None, sab_host=None, nzbget_username=None, nzbget_password=None, nzbget_category=None, nzbget_host=None,
+                        nzb_method=None, torrent_method=None, usenet_retention=None, search_frequency=None, download_propers=None, allow_high_priority=None,
+                        torrent_dir=None, torrent_username=None, torrent_password=None, torrent_host=None, torrent_label=None, torrent_path=None, 
+                        torrent_ratio=None, torrent_paused=None, torrent_high_bandwidth=None, ignore_words=None):
+@@ -1017,6 +1017,7 @@
+ 
+         sickbeard.SAB_HOST = sab_host
+ 
++        sickbeard.NZBGET_USERNAME = nzbget_username
+         sickbeard.NZBGET_PASSWORD = nzbget_password
+         sickbeard.NZBGET_CATEGORY = nzbget_category
+         sickbeard.NZBGET_HOST = nzbget_host
