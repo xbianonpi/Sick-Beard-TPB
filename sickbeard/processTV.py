@@ -122,8 +122,14 @@ def processDir (dirName, nzbName=None, recurse=False):
         
         for processPath, processDir, fileList in ek.ek(os.walk, ek.ek(os.path.join, path, dir), topdown=False):
 
+            #TODO ADD some other checking
+
             videoFiles = filter(helpers.isMediaFile, fileList)
             notwantedFiles = [x for x in fileList if x not in videoFiles]
+
+#            # Do not process video files in root directory a second time (copies and symbolic/physical links may remain).
+#            if processPath == dirName:
+#                videoFiles = []
 
             # If nzbName is set and there's more than one videofile in the folder, files will be lost (overwritten).
             if nzbName != None and len(videoFiles) >= 2:
@@ -154,7 +160,7 @@ def processDir (dirName, nzbName=None, recurse=False):
                     
             #Delete all file not needed
             for cur_file in notwantedFiles:
-                if sickbeard.KEEP_PROCESSED_DIR or not process_result:
+                if sickbeard.PROCESS_METHOD != "move" or not process_result:
                     break
 
                 cur_file_path = ek.ek(os.path.join, processPath, cur_file)
@@ -168,7 +174,7 @@ def processDir (dirName, nzbName=None, recurse=False):
 
                 returnStr += processor.log
 
-            if not sickbeard.KEEP_PROCESSED_DIR and \
+            if sickbeard.PROCESS_METHOD == "move" and \
             ek.ek(os.path.normpath, processPath) != ek.ek(os.path.normpath, sickbeard.TV_DOWNLOAD_DIR):
             
                 if not ek.ek(os.listdir, processPath) == []:
@@ -217,13 +223,5 @@ def validateDir(path, dirName, returnStr):
         if int(numPostProcFiles[0][0]) == len(videoFiles):
             returnStr += logHelper(u"You're trying to post process a dir that's already been processed, skipping", logger.DEBUG)
             return False
-        
-#    #check if the dir have at least one tv video file
-#    for video in videoFiles:
-#        try:
-#            NameParser().parse(video)
-#            return True
-#        except InvalidNameException:
-#            pass
     
     return True

@@ -17,6 +17,7 @@
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
 import re
+import traceback
 
 import sickbeard
 import generic
@@ -188,7 +189,7 @@ class TorrentLeechProvider(generic.TorrentProvider):
                         items[mode].append(item)
 
                 except Exception, e:
-                    logger.log(u"Failed parsing " + self.name + (" Exceptions: "  + str(e) if e else ''), logger.ERROR)
+                    logger.log(u"Failed parsing " + self.name + " Traceback: "  + traceback.format_exc(), logger.ERROR)
 
             #For each search mode sort all the items by seeders
             items[mode].sort(key=lambda tup: tup[3], reverse=True)        
@@ -279,7 +280,7 @@ class TorrentLeechCache(tvcache.TVCache):
                 self._parseItem(item)
 
         except Exception, e:
-            logger.log(u"Failed to parsing " + self.provider.name + " RSS: " + ex(e), logger.ERROR)
+            logger.log(u"Failed to parsing " + self.provider.name + " RSS - " + " Traceback: "  + traceback.format_exc(), logger.ERROR)
 
     def _getData(self):
        

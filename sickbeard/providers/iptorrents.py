@@ -17,6 +17,7 @@
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
 import re
+import traceback
 
 import sickbeard
 import generic
@@ -197,7 +198,7 @@ class IPTorrentsProvider(generic.TorrentProvider):
                         items[mode].append(item)
 
                 except Exception, e:
-                    logger.log(u"Failed parsing " + self.name + (" Exceptions: "  + str(e) if e else ''), logger.ERROR)
+                    logger.log(u"Failed parsing " + self.name + " Traceback: "  + traceback.format_exc(), logger.ERROR)
 
             results += items[mode]  
                 
@@ -288,6 +289,6 @@ class IPTorrentsCache(tvcache.TVCache):
                 self._addCacheEntry(torrent_name, torrent_download_url)
 
         except Exception, e:
-            logger.log(u"Failed to parse " + self.provider.name + " cache page URL: " + cacheURL + (" Exceptions: "  + str(e) if e else ''), logger.ERROR)
+            logger.log(u"Failed parsing " + self.provider.name + " RSS - " + " Traceback: "  + traceback.format_exc(), logger.ERROR)
 
 provider = IPTorrentsProvider()

@@ -56,7 +56,7 @@ def sendNZB(nzb):
 
     except xmlrpclib.ProtocolError, e:
         if (e.errmsg == "Unauthorized"):
-            logger.log(u"NZBget password is incorrect.", logger.ERROR)
+            logger.log(u"NZBget username and/or password is incorrect.", logger.ERROR)
         else:
             logger.log(u"Protocol Error: " + e.errmsg, logger.ERROR)
         return False
@@ -99,4 +99,3 @@ def sendNZB(nzb):
     except:
         logger.log(u"Connect Error to NZBget: could not add %s to the queue" % (nzb.name + ".nzb"), logger.ERROR)
         return False
-
