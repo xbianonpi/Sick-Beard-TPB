@@ -89,9 +89,6 @@ def _downloadResult(result):
         logger.log(u"Invalid provider type - this is a coding error, report it please", logger.ERROR)
         return False
 
-    if newResult:
-        ui.notifications.message('Episode snatched','<b>%s</b> snatched from <b>%s</b>' % (result.name, resProvider.name))
-
     return newResult
 
 def snatchEpisode(result, endStatus=SNATCHED):
@@ -129,7 +126,6 @@ def snatchEpisode(result, endStatus=SNATCHED):
         if sickbeard.TORRENT_METHOD == "blackhole": 
             dlResult = _downloadResult(result)
         else:
-
             result.content = result.provider.getURL(result.url) if not result.url.startswith('magnet') else None 
             client = clients.getClientIstance(sickbeard.TORRENT_METHOD)()
             dlResult = client.sendTORRENT(result)
@@ -139,6 +135,8 @@ def snatchEpisode(result, endStatus=SNATCHED):
 
     if dlResult == False:
         return False
+
+    ui.notifications.message('Episode snatched', result.name)
 
     history.logSnatch(result)
 
@@ -195,6 +193,11 @@ def searchForNeededEpisodes():
                     bestResult = curResult
 
             bestResult = pickBestResult(curFoundResults[curEp])
+            
+            # if all results were rejected move on to the next episode 
+            if not bestResult:
+                logger.log(u"All found results for "+curEp.prettyName()+" were rejected.", logger.DEBUG)
+                continue
 
             # if it's already in the list (from another provider) and the newly found quality is no better then skip it
             if curEp in foundResults and bestResult.quality <= foundResults[curEp].quality:

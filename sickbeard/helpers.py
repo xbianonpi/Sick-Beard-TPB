@@ -16,17 +16,35 @@
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
-import StringIO, zlib, gzip
+import gzip
 import os
-import stat
-import urllib, urllib2
-import re, socket
+import re
 import shutil
+import socket
+import stat
+import StringIO
+import shutil
+import sys
+import time
 import traceback
-import time, sys
+import urllib
+import urllib2
+import zlib
 import hashlib
+import httplib
+import urlparse
 
 from httplib import BadStatusLine
+
+try:
+    import json
+except ImportError:
+    from lib import simplejson as json
+
+try:
+    import xml.etree.cElementTree as etree
+except ImportError:
+    import elementtree.ElementTree as etree
 
 from xml.dom.minidom import Node
 
@@ -42,25 +60,24 @@ from sickbeard import notifiers
 
 from lib.tvdb_api import tvdb_api, tvdb_exceptions
 
-import xml.etree.cElementTree as etree
-
 from lib import subliminal
 #from sickbeard.subtitles import EXTENSIONS
 
 urllib._urlopener = classes.SickBeardURLopener()
 
+
 def indentXML(elem, level=0):
     '''
     Does our pretty printing, makes Matt very happy
     '''
-    i = "\n" + level*"  "
+    i = "\n" + level * "  "
     if len(elem):
         if not elem.text or not elem.text.strip():
             elem.text = i + "  "
         if not elem.tail or not elem.tail.strip():
             elem.tail = i
         for elem in elem:
-            indentXML(elem, level+1)
+            indentXML(elem, level + 1)
         if not elem.tail or not elem.tail.strip():
             elem.tail = i
     else:
@@ -70,7 +87,7 @@ def indentXML(elem, level=0):
         if level and (not elem.tail or not elem.tail.strip()):
             elem.tail = i
 
-def replaceExtension(file, newExt):
+def replaceExtension(filename, newExt):
     '''
     >>> replaceExtension('foo.avi', 'mkv')
     'foo.mkv'
@@ -83,28 +100,48 @@ def replaceExtension(file, newExt):
     >>> replaceExtension('foo.bar', '')
     'foo.'
     '''
-    sepFile = file.rpartition(".")
+    sepFile = filename.rpartition(".")
     if sepFile[0] == "":
-        return file
+        return filename
     else:
         return sepFile[0] + "." + newExt
 
-def isMediaFile (file):
+def isMediaFile(filename):
     # ignore samples
-    if re.search('(^|[\W_])sample\d*[\W_]', file):
+    if re.search('(^|[\W_])(sample\d*)[\W_]', filename, re.I):
         return False
 
     # ignore MAC OS's retarded "resource fork" files
-    if file.startswith('._'):
+    if filename.startswith('._'):
         return False
 
-    sepFile = file.rpartition(".")
+    sepFile = filename.rpartition(".")
+    
+    if re.search('extras?$', sepFile[0], re.I):
+        return False
+        
     if sepFile[2].lower() in mediaExtensions:
         return True
     else:
         return False
 
-def sanitizeFileName (name):
+def isRarFile(filename):
+    archive_regex = '(?P<file>^(?P<base>(?:(?!\.part\d+\.rar$).)*)\.(?:(?:part0*1\.)?rar)$)'
+    
+    if re.search(archive_regex, filename):
+        return True
+    
+    return False
+
+def isBeingWritten(filepath):
+# Return True if file was modified within 60 seconds. it might still be being written to.
+    ctime = max(ek.ek(os.path.getctime, filepath), ek.ek(os.path.getmtime, filepath))
+    if ctime > time.time() - 60:
+        return True
+    
+    return False
+
+def sanitizeFileName(name):
     '''
     >>> sanitizeFileName('a/b/c')
     'a-b-c'
@@ -126,7 +163,7 @@ def sanitizeFileName (name):
     return name
 
 
-def getURL (url, headers=[]):
+def getURL(url, headers=[]):
     """
     Returns a byte-string retrieved from the url provider.
     """
@@ -157,18 +194,23 @@ def getURL (url, headers=[]):
     except urllib2.HTTPError, e:
         logger.log(u"HTTP error " + str(e.code) + " while loading URL " + url, logger.WARNING)
         return None
+
     except urllib2.URLError, e:
         logger.log(u"URL error " + str(e.reason) + " while loading URL " + url, logger.WARNING)
         return None
+
     except BadStatusLine:
         logger.log(u"BadStatusLine error while loading URL " + url, logger.WARNING)
         return None
+
     except socket.timeout:
         logger.log(u"Timed out while loading URL " + url, logger.WARNING)
         return None
+
     except ValueError:
         logger.log(u"Unknown error while loading URL " + url, logger.WARNING)
         return None
+
     except Exception:
         logger.log(u"Unknown exception while loading URL " + url + ": " + traceback.format_exc(), logger.WARNING)
         return None
@@ -197,22 +239,27 @@ def download_file(url, filename):
         _remove_file_failed(filename)
         logger.log(u"HTTP error " + str(e.code) + " while loading URL " + url, logger.WARNING)
         return False
+
     except urllib2.URLError, e:
         _remove_file_failed(filename)
         logger.log(u"URL error " + str(e.reason) + " while loading URL " + url, logger.WARNING)
         return False
+
     except BadStatusLine:
         _remove_file_failed(filename)
         logger.log(u"BadStatusLine error while loading URL " + url, logger.WARNING)
         return False
+
     except socket.timeout:
         _remove_file_failed(filename)
         logger.log(u"Timed out while loading URL " + url, logger.WARNING)
         return False
+
     except ValueError:
         _remove_file_failed(filename)
         logger.log(u"Unknown error while loading URL " + url, logger.WARNING)
         return False
+
     except Exception:
         _remove_file_failed(filename)
         logger.log(u"Unknown exception while loading URL " + url + ": " + traceback.format_exc(), logger.WARNING)
@@ -220,7 +267,7 @@ def download_file(url, filename):
     
     return True
 
-def findCertainShow (showList, tvdbid):
+def findCertainShow(showList, tvdbid):
     results = filter(lambda x: x.tvdbid == tvdbid, showList)
     if len(results) == 0:
         return None
@@ -229,7 +276,7 @@ def findCertainShow (showList, tvdbid):
     else:
         return results[0]
 
-def findCertainTVRageShow (showList, tvrid):
+def findCertainTVRageShow(showList, tvrid):
 
     if tvrid == 0:
         return None
@@ -243,20 +290,19 @@ def findCertainTVRageShow (showList, tvrid):
     else:
         return results[0]
 
-
-def makeDir (dir):
-    if not ek.ek(os.path.isdir, dir):
+def makeDir(path):
+    if not ek.ek(os.path.isdir, path):
         try:
-            ek.ek(os.makedirs, dir)
+            ek.ek(os.makedirs, path)
             # do the library update for synoindex
-            notifiers.synoindex_notifier.addFolder(dir)
+            notifiers.synoindex_notifier.addFolder(path)
         except OSError:
             return False
     return True
 
 def makeShowNFO(showID, showDir):
 
-    logger.log(u"Making NFO for show "+str(showID)+" in dir "+showDir, logger.DEBUG)
+    logger.log(u"Making NFO for show " + str(showID) + " in dir " + showDir, logger.DEBUG)
 
     if not makeDir(showDir):
         logger.log(u"Unable to create show dir, can't make NFO", logger.ERROR)
@@ -300,13 +346,13 @@ def makeShowNFO(showID, showDir):
 
     tvNode = buildNFOXML(myShow)
     # Make it purdy
-    indentXML( tvNode )
-    nfo = etree.ElementTree( tvNode )
+    indentXML(tvNode)
+    nfo = etree.ElementTree(tvNode)
 
-    logger.log(u"Writing NFO to "+os.path.join(showDir, "tvshow.nfo"), logger.DEBUG)
+    logger.log(u"Writing NFO to " + os.path.join(showDir, "tvshow.nfo"), logger.DEBUG)
     nfo_filename = os.path.join(showDir, "tvshow.nfo").encode('utf-8')
     nfo_fh = open(nfo_filename, 'w')
-    nfo.write( nfo_fh, encoding="utf-8" )
+    nfo.write(nfo_fh, encoding="utf-8" )
 
     return True
 
@@ -330,61 +376,61 @@ def buildNFOXML(myShow):
     >>> tostring(buildNFOXML(show))
     '<tvshow xsd="http://www.w3.org/2001/XMLSchema" xsi="http://www.w3.org/2001/XMLSchema-instance"><title>Peaches</title><rating /><plot /><episodeguide><url /></episodeguide><mpaa>PG</mpaa><id /><genre>Fruit / Edibles</genre><premiered /><studio /></tvshow>'
     '''
-    tvNode = etree.Element( "tvshow" )
+    tvNode = etree.Element("tvshow")
     for ns in XML_NSMAP.keys():
         tvNode.set(ns, XML_NSMAP[ns])
 
-    title = etree.SubElement( tvNode, "title" )
+    title = etree.SubElement(tvNode, "title")
     if myShow["seriesname"] != None:
         title.text = myShow["seriesname"]
 
-    rating = etree.SubElement( tvNode, "rating" )
+    rating = etree.SubElement(tvNode, "rating")
     if myShow["rating"] != None:
         rating.text = myShow["rating"]
 
-    plot = etree.SubElement( tvNode, "plot" )
+    plot = etree.SubElement(tvNode, "plot")
     if myShow["overview"] != None:
         plot.text = myShow["overview"]
 
-    episodeguide = etree.SubElement( tvNode, "episodeguide" )
-    episodeguideurl = etree.SubElement( episodeguide, "url" )
+    episodeguide = etree.SubElement(tvNode, "episodeguide")
+    episodeguideurl = etree.SubElement(episodeguide, "url")
     if myShow["id"] != None:
         showurl = sickbeard.TVDB_BASE_URL + '/series/' + myShow["id"] + '/all/en.zip'
         episodeguideurl.text = showurl
 
-    mpaa = etree.SubElement( tvNode, "mpaa" )
+    mpaa = etree.SubElement(tvNode, "mpaa")
     if myShow["contentrating"] != None:
         mpaa.text = myShow["contentrating"]
 
-    tvdbid = etree.SubElement( tvNode, "id" )
+    tvdbid = etree.SubElement(tvNode, "id")
     if myShow["id"] != None:
         tvdbid.text = myShow["id"]
 
-    genre = etree.SubElement( tvNode, "genre" )
+    genre = etree.SubElement(tvNode, "genre")
     if myShow["genre"] != None:
         genre.text = " / ".join([x for x in myShow["genre"].split('|') if x != ''])
 
-    premiered = etree.SubElement( tvNode, "premiered" )
+    premiered = etree.SubElement(tvNode, "premiered")
     if myShow["firstaired"] != None:
         premiered.text = myShow["firstaired"]
 
-    studio = etree.SubElement( tvNode, "studio" )
+    studio = etree.SubElement(tvNode, "studio")
     if myShow["network"] != None:
         studio.text = myShow["network"]
 
     for actor in myShow['_actors']:
 
-        cur_actor = etree.SubElement( tvNode, "actor" )
+        cur_actor = etree.SubElement(tvNode, "actor")
 
-        cur_actor_name = etree.SubElement( cur_actor, "name" )
+        cur_actor_name = etree.SubElement(cur_actor, "name")
         cur_actor_name.text = actor['name']
-        cur_actor_role = etree.SubElement( cur_actor, "role" )
+        cur_actor_role = etree.SubElement(cur_actor, "role")
         cur_actor_role_text = actor['role']
 
         if cur_actor_role_text != None:
             cur_actor_role.text = cur_actor_role_text
 
-        cur_actor_thumb = etree.SubElement( cur_actor, "thumb" )
+        cur_actor_thumb = etree.SubElement(cur_actor, "thumb")
         cur_actor_thumb_text = actor['image']
 
         if cur_actor_thumb_text != None:
@@ -414,13 +460,13 @@ def searchDBForShow(regShowName):
             match = re.match(yearRegex, showName)
             if match and match.group(1):
                 logger.log(u"Unable to match original name but trying to manually strip and specify show year", logger.DEBUG)
-                sqlResults = myDB.select("SELECT * FROM tv_shows WHERE (show_name LIKE ? OR tvr_name LIKE ?) AND startyear = ?", [match.group(1)+'%', match.group(1)+'%', match.group(3)])
+                sqlResults = myDB.select("SELECT * FROM tv_shows WHERE (show_name LIKE ? OR tvr_name LIKE ?) AND startyear = ?", [match.group(1) + '%', match.group(1) + '%', match.group(3)])
 
             if len(sqlResults) == 0:
-                logger.log(u"Unable to match a record in the DB for "+showName, logger.DEBUG)
+                logger.log(u"Unable to match a record in the DB for " + showName, logger.DEBUG)
                 continue
             elif len(sqlResults) > 1:
-                logger.log(u"Multiple results for "+showName+" in the DB, unable to match show name", logger.DEBUG)
+                logger.log(u"Multiple results for " + showName + " in the DB, unable to match show name", logger.DEBUG)
                 continue
             else:
                 return (int(sqlResults[0]["tvdb_id"]), sqlResults[0]["show_name"])
@@ -441,21 +487,21 @@ def sizeof_fmt(num):
     >>> sizeof_fmt(1234567)
     '1.2 MB'
     '''
-    for x in ['bytes','KB','MB','GB','TB']:
+    for x in ['bytes', 'KB', 'MB', 'GB', 'TB']:
         if num < 1024.0:
             return "%3.1f %s" % (num, x)
         num /= 1024.0
 
-def listMediaFiles(dir):
+def listMediaFiles(path):
 
-    if not dir or not ek.ek(os.path.isdir, dir):
+    if not dir or not ek.ek(os.path.isdir, path):
         return []
 
     files = []
-    for curFile in ek.ek(os.listdir, dir):
-        fullCurFile = ek.ek(os.path.join, dir, curFile)
+    for curFile in ek.ek(os.listdir, path):
+        fullCurFile = ek.ek(os.path.join, path, curFile)
 
-        # if it's a dir do it recursively
+        # if it's a folder do it recursively
         if ek.ek(os.path.isdir, fullCurFile) and not curFile.startswith('.') and not curFile == 'Extras':
             files += listMediaFiles(fullCurFile)
 
@@ -537,7 +583,7 @@ def make_dirs(path):
 
             # look through each subfolder and make sure they all exist
             for cur_folder in folder_list:
-                sofar += cur_folder + os.path.sep;
+                sofar += cur_folder + os.path.sep
 
                 # if it exists then just keep walking down the line
                 if ek.ek(os.path.isdir, sofar):
@@ -557,18 +603,26 @@ def make_dirs(path):
     return True
 
 
-def rename_ep_file(cur_path, new_path):
+def rename_ep_file(cur_path, new_path, old_path_length=0):
     """
     Creates all folders needed to move a file to its new location, renames it, then cleans up any folders
     left that are now empty.
 
     cur_path: The absolute path to the file you want to move/rename
     new_path: The absolute path to the destination for the file WITHOUT THE EXTENSION
+    old_path_length: The length of media file path (old name) WITHOUT THE EXTENSION
     """
 
     new_dest_dir, new_dest_name = os.path.split(new_path) #@UnusedVariable
-    cur_file_name, cur_file_ext = os.path.splitext(cur_path) #@UnusedVariable
 
+    if old_path_length == 0 or old_path_length > len(cur_path):
+        # approach from the right
+        cur_file_name, cur_file_ext = os.path.splitext(cur_path)  # @UnusedVariable
+    else:
+        # approach from the left
+        cur_file_ext  = cur_path[old_path_length:]
+        cur_file_name = cur_path[:old_path_length]
+        
     if cur_file_ext[1:] in subtitleExtensions:
         #Extract subtitle language from filename
         sublang = os.path.splitext(cur_file_name)[1][1:]
@@ -639,7 +693,7 @@ def chmodAsParent(childPath):
     parentPath = ek.ek(os.path.dirname, childPath)
     
     if not parentPath:
-        logger.log(u"No parent path provided in "+childPath+", unable to get permissions from it", logger.DEBUG)
+        logger.log(u"No parent path provided in " + childPath + ", unable to get permissions from it", logger.DEBUG)
         return
     
     parentPathStat = ek.ek(os.stat, parentPath)
@@ -657,10 +711,10 @@ def chmodAsParent(childPath):
         return
 
     childPath_owner = childPathStat.st_uid
-    user_id = os.geteuid()
+    user_id = os.geteuid() #only available on UNIX
 
     if user_id !=0 and user_id != childPath_owner:
-        logger.log(u"Not running as root or owner of "+childPath+", not trying to set permissions", logger.DEBUG)
+        logger.log(u"Not running as root or owner of " + childPath + ", not trying to set permissions", logger.DEBUG)
         return
 
     try:
@@ -693,10 +747,10 @@ def fixSetGroupID(childPath):
             return
 
         childPath_owner = childStat.st_uid
-        user_id = os.geteuid()
+        user_id = os.geteuid() #only available on UNIX
 
         if user_id !=0 and user_id != childPath_owner:
-            logger.log(u"Not running as root or owner of "+childPath+", not trying to set the set-group-ID", logger.DEBUG)
+            logger.log(u"Not running as root or owner of " + childPath + ", not trying to set the set-group-ID", logger.DEBUG)
             return
 
         try:
@@ -725,7 +779,7 @@ def sanitizeSceneName (name, ezrss=False):
         name = name.replace(x, "")
 
     # tidy up stuff that doesn't belong in scene names
-    name = name.replace("- ", ".").replace(" ", ".").replace("&", "and").replace('/','.')
+    name = name.replace("- ", ".").replace(" ", ".").replace("&", "and").replace('/', '.')
     name = re.sub("\.\.*", ".", name)
 
     if name.endswith('.'):
@@ -738,7 +792,7 @@ def create_https_certificates(ssl_cert, ssl_key):
     Create self-signed HTTPS certificares and store in paths 'ssl_cert' and 'ssl_key'
     """
     try:
-        from OpenSSL import crypto #@UnresolvedImport
+        from OpenSSL import crypto  #@UnresolvedImport
         from lib.certgen import createKeyPair, createCertRequest, createCertificate, TYPE_RSA, serial #@UnresolvedImport
     except:
         logger.log(u"pyopenssl module missing, please install for https access", logger.WARNING)
@@ -747,12 +801,12 @@ def create_https_certificates(ssl_cert, ssl_key):
     # Create the CA Certificate
     cakey = createKeyPair(TYPE_RSA, 1024)
     careq = createCertRequest(cakey, CN='Certificate Authority')
-    cacert = createCertificate(careq, (careq, cakey), serial, (0, 60*60*24*365*10)) # ten years
+    cacert = createCertificate(careq, (careq, cakey), serial, (0, 60 * 60 * 24 * 365 * 10)) # ten years
 
     cname = 'SickBeard'
     pkey = createKeyPair(TYPE_RSA, 1024)
     req = createCertRequest(pkey, CN=cname)
-    cert = createCertificate(req, (cacert, cakey), serial, (0, 60*60*24*365*10)) # ten years
+    cert = createCertificate(req, (cacert, cakey), serial, (0, 60* 60 * 24 * 365 *10)) # ten years
 
     # Save the key and certificate to disk
     try:
@@ -768,35 +822,96 @@ if __name__ == '__main__':
     import doctest
     doctest.testmod()
 
-def get_xml_text(node):
+
+def parse_json(data):
+    """
+    Parse json data into a python object
+
+    data: data string containing json
+
+    Returns: parsed data as json or None
+    """
+
+    try:
+        parsedJSON = json.loads(data)
+    except ValueError:
+        logger.log(u"Error trying to decode json data:" + data, logger.ERROR)
+        return None
+
+    return parsedJSON
+
+
+def parse_xml(data, del_xmlns=False):
+    """
+    Parse data into an xml elementtree.ElementTree
+
+    data: data string containing xml
+    del_xmlns: if True, removes xmlns namesspace from data before parsing
+
+    Returns: parsed data as elementtree or None
+    """
+
+    if del_xmlns:
+        data = re.sub(' xmlns="[^"]+"', '', data)
+
+    try:
+        parsedXML = etree.fromstring(data)
+    except Exception, e:
+        logger.log(u"Error trying to parse xml data: " + data + " to Elementtree, Error: " + ex(e), logger.DEBUG)
+        parsedXML = None
+
+    return parsedXML
+
+
+def get_xml_text(element, mini_dom=False):
+    """
+    Get all text inside a xml element
+
+    element: A xml element either created with elementtree.ElementTree or xml.dom.minidom
+    mini_dom: Default False use elementtree, True use minidom
+
+    Returns: text
+    """
+
     text = ""
-    for child_node in node.childNodes:
-        if child_node.nodeType in (Node.CDATA_SECTION_NODE, Node.TEXT_NODE):
-            text += child_node.data
+
+    if mini_dom:
+        node = element
+        for child in node.childNodes:
+            if child.nodeType in (Node.CDATA_SECTION_NODE, Node.TEXT_NODE):
+                text += child.data
+    else:
+        if element is not None:
+            for child in [element] + element.findall('.//*'):
+                if child.text:
+                    text += child.text
+
     return text.strip()
+
+ 
 
 def backupVersionedFile(oldFile, version):
     numTries = 0
     
-    newFile = oldFile + '.' + 'v'+str(version)
-    
+    newFile = oldFile + '.' + 'v' + str(version)
+
     while not ek.ek(os.path.isfile, newFile):
         if not ek.ek(os.path.isfile, oldFile):
             break
 
         try:
-            logger.log(u"Attempting to back up "+oldFile+" before migration...")
+            logger.log(u"Attempting to back up " + oldFile + " before migration...")
             shutil.copy(oldFile, newFile)
             logger.log(u"Done backup, proceeding with migration.")
             break
         except Exception, e:
-            logger.log(u"Error while trying to back up "+oldFile+": "+ex(e))
+            logger.log(u"Error while trying to back up " + oldFile + ": " + ex(e))
             numTries += 1
             time.sleep(1)
             logger.log(u"Trying again.")
 
         if numTries >= 10:
-            logger.log(u"Unable to back up "+oldFile+", please do it manually.")
+            logger.log(u"Unable to back up " + oldFile + ", please do it manually.")
             sys.exit(1)
 
 # try to convert to int, if it fails the default will be returned
@@ -817,4 +932,58 @@ def md5_for_file(filename, block_size=2**16):
             f.close()
             return md5.hexdigest()
     except Exception:
+        return None
+    
+def get_lan_ip():
+    """
+    Simple function to get LAN localhost_ip 
+    http://stackoverflow.com/questions/11735821/python-get-localhost-ip
+    """
+
+    if os.name != "nt":
+        import fcntl
+        import struct
+    
+        def get_interface_ip(ifname):
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            return socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, struct.pack('256s',
+                                    ifname[:15]))[20:24])
+    
+    ip = socket.gethostbyname(socket.gethostname())
+    if ip.startswith("127.") and os.name != "nt":
+        interfaces = [
+            "eth0",
+            "eth1",
+            "eth2",
+            "wlan0",
+            "wlan1",
+            "wifi0",
+            "ath0",
+            "ath1",
+            "ppp0",
+            ]
+        for ifname in interfaces:
+            try:
+                ip = get_interface_ip(ifname)
+                print ifname, ip 
+                break
+            except IOError:
+                pass
+    return ip
+
+def check_url(url):
+    """
+    Check if a URL exists without downloading the whole file.
+    We only check the URL header.
+    """
+    # see also http://stackoverflow.com/questions/2924422
+    # http://stackoverflow.com/questions/1140661
+    good_codes = [httplib.OK, httplib.FOUND, httplib.MOVED_PERMANENTLY]
+
+    host, path = urlparse.urlparse(url)[1:3]    # elems [1] and [2]
+    try:
+        conn = httplib.HTTPConnection(host)
+        conn.request('HEAD', path)
+        return conn.getresponse().status in good_codes
+    except StandardError:
         return None

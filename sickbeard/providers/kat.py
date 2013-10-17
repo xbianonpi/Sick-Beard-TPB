@@ -116,8 +116,12 @@ class KATProvider(generic.TorrentProvider):
             
             #Filtering SingleEpisode/MultiSeason Torrent
             if len(videoFiles) < ep_number or len(videoFiles) > float(ep_number * 1.1 ): 
+                logger.log(u"Result " + title + " have " + str(ep_number) + " episode and episodes retrived in torrent are " + str(len(videoFiles)), logger.DEBUG)
                 logger.log(u"Result " + title + " Seem to be a Single Episode or MultiSeason torrent, skipping result...", logger.DEBUG)
                 return None
+
+            if Quality.sceneQuality(title) != Quality.UNKNOWN:
+                return title
                 
             for fileName in videoFiles:
                 quality = Quality.sceneQuality(os.path.basename(fileName))
@@ -228,19 +232,24 @@ class KATProvider(generic.TorrentProvider):
                     torrent_table = soup.find('table', attrs = {'class' : 'data'})
                     torrent_rows = torrent_table.find_all('tr') if torrent_table else []
 
-                    if not torrent_rows:
-#                        logger.log(u"The Data returned from " + self.name + " do not contains any torrent", logger.ERROR)
+                    #Continue only if one Release is found
+                    if len(torrent_rows)<2:
+                        logger.log(u"The Data returned from " + self.name + " do not contains any torrent", logger.WARNING)
                         continue
                     
                     for tr in torrent_rows[1:]:
-                        link = self.url + (tr.find('div', {'class': 'torrentname'}).find_all('a')[1])['href']
-                        id = tr.get('id')[-7:]
-                        title = (tr.find('div', {'class': 'torrentname'}).find_all('a')[1]).text
-                        url = tr.find('a', 'imagnet')['href']
-                        verified = True if tr.find('a', 'iverify') else False
-                        trusted =  True if tr.find('img', {'alt': 'verified'}) else False
-                        seeders = int(tr.find_all('td')[-2].text)
-                        leechers = int(tr.find_all('td')[-1].text)
+
+                        try:
+                            link = self.url + (tr.find('div', {'class': 'torrentname'}).find_all('a')[1])['href']
+                            id = tr.get('id')[-7:]
+                            title = (tr.find('div', {'class': 'torrentname'}).find_all('a')[1]).text
+                            url = tr.find('a', 'imagnet')['href']
+                            verified = True if tr.find('a', 'iverify') else False
+                            trusted =  True if tr.find('img', {'alt': 'verified'}) else False
+                            seeders = int(tr.find_all('td')[-2].text)
+                            leechers = int(tr.find_all('td')[-1].text)
+                        except AttributeError, TypeError:
+                            continue
 
                         if mode != 'RSS' and seeders == 0:
                             continue 
@@ -249,11 +258,12 @@ class KATProvider(generic.TorrentProvider):
                             logger.log(u"KAT Provider found result "+title+" but that doesn't seem like a verified result so I'm ignoring it",logger.DEBUG)
                             continue
 
-                        if mode == 'Season' and Quality.sceneQuality(title) == Quality.UNKNOWN:
-                            ep_number = int(len(search_params['Episode']) / len(allPossibleShowNames(self.show)))
+                        #Check number video files = episode in season and find the real Quality for full season torrent analyzing files in torrent 
+                        if mode == 'Season':
+                            ep_number = int(len(search_params['Episode']) / len(set(allPossibleShowNames(self.show))))
                             title = self._find_season_quality(title, link, ep_number)
 
-                        if not title:
+                        if not title or not url:
                             continue
 
                         item = title, url, id, seeders, leechers
@@ -261,7 +271,7 @@ class KATProvider(generic.TorrentProvider):
                         items[mode].append(item)
 
                 except Exception, e:
-                    logger.log(u"Failed to parsing " + self.name + (" Exceptions: "  + str(e) if e else ''), logger.ERROR)
+                    logger.log(u"Failed to parsing " + self.name + " Traceback: "  + traceback.format_exc(), logger.ERROR)
                     
             #For each search mode sort all the items by seeders
             items[mode].sort(key=lambda tup: tup[3], reverse=True)        
@@ -364,7 +374,7 @@ class KATCache(tvcache.TVCache):
         if not title or not url:
             return
 
-        logger.log(u"Adding item to cache: "+title, logger.DEBUG)
+        logger.log(u"Adding item to cache: " + title, logger.DEBUG)
 
         self._addCacheEntry(title, url)
     
