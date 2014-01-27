@@ -291,8 +291,8 @@
                                 <span class="component-title jumbo">TORRENT Method</span>
                                 <span class="component-desc">
                                 <select name="torrent_method" id="torrent_method">
-                                #set $torrent_method_text = {'blackhole': "Black hole", 'utorrent': "uTorrent", 'transmission': "Transmission", 'deluge': "Deluge", 'download_station': "Synology DS"}
-                                #for $curAction in ('blackhole', 'utorrent', 'transmission', 'deluge', 'download_station'):
+                                #set $torrent_method_text = {'blackhole': "Black hole", 'utorrent': "uTorrent", 'transmission': "Transmission", 'deluge': "Deluge", 'download_station': "Synology DS", 'rtorrent': "rTorrent"}
+                                #for $curAction in ('blackhole', 'utorrent', 'transmission', 'deluge', 'download_station', 'rtorrent'):
                                   #if $sickbeard.TORRENT_METHOD == $curAction:
                                     #set $torrent_method = "selected=\"selected\""
                                   #else
@@ -328,11 +328,11 @@
                                 </label>
                                 <label class="nocheck clearfix">
                                     <span class="component-title">&nbsp;</span>
-                                    <span class="component-desc">URL to your Torrent Client</span>
+                                    <span class="component-desc">URL to your Torrent Client (eg. http://localhost:9091/)</span>
                                 </label>
                                 <label class="nocheck clearfix">
                                     <span class="component-title">&nbsp;</span>
-                                    <span class="component-desc">(eg. http://localhost:9091/)</span>
+                                    <span class="component-desc"><b>Note:</b> <i>rTorrent</i> users need to use scgi://localhost:5000/</span>
                                 </label>
                             </div>
                             
