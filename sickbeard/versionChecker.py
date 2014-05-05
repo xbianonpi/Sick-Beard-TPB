@@ -407,7 +407,7 @@ class GitUpdateManager(UpdateManager):
         gh = github.GitHub(self.github_repo_user, self.github_repo, self.branch)
 
         # find newest commit
-        for curCommit in gh.commits('xbianonpi', 'Sick-Beard-TPB', version.SICKBEARD_VERSION):
+        for curCommit in gh.commits():
 
             if not self._newest_commit_hash:
                 self._newest_commit_hash = curCommit['sha']
